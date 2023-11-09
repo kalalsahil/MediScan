@@ -1,0 +1,288 @@
+const bodyParser = require("body-parser");
+const mongoose = require("mongoose");
+const _ = require("lodash");
+const tf = require("@tensorflow/tfjs-node");
+const dotenv = require("dotenv");
+const fs = require("fs");
+const path = require("path");
+dotenv.config();
+
+// * Server Stuff
+const express = require("express");
+const busboy = require("busboy");
+const util = require("util");
+const Web3 = require("web3");
+const contractABI = require("./config"); // Your contract's ABI
+const contractAddress = require("./config"); // Replace with your contract's address
+
+const web3 = new Web3("HTTP://127.0.0.1:7545"); // Replace with your Ethereum provider URL
+const contract = new web3.eth.Contract(contractABI.PREDICTIONS_ABI, contractAddress.PREDICTIONS_ADDRESS);
+
+
+const PORT = 3000;
+const app = express();
+const disease=['Acne', 'Eczema', 'new_melanoma', 'pityriasis', 'psoriasis', 'vitiligo'];
+app.set('view engine','ejs');
+app.use(bodyParser.urlencoded({extended: true}));
+app.use(express.static("public"));
+app.use(express.json());
+
+let model = undefined;
+
+// Load your custom model here
+async function loadCustomModel() {
+  const modelPath = "./CustomModel/"; // Replace with your model path
+  model = await tf.node.loadSavedModel(modelPath);
+}
+
+loadCustomModel()
+  .then(() => {
+    console.log("Custom model loaded.");
+  })
+  .catch((error) => {
+    console.error("Error loading custom model:", error);
+    process.exit(1);
+  });
+
+app.get("/",function(req,res){
+    res.render("home",{currentPage:"home"});
+})
+
+app.get("/about",function(req,res){
+    res.render("about",{currentPage:"about"});
+})
+
+app.get("/appointment",function(req,res){
+    res.render("appointment",{currentPage:"pages"});
+})
+
+app.get("/blog",function(req,res){
+    res.render("blog",{currentPage:"pages"});
+})
+
+app.get("/contact",function(req,res){
+    res.render("contact",{currentPage:"contact"});
+})
+
+app.get("/detail",function(req,res){
+    res.render("detail",{currentPage:"pages"});
+})
+
+app.get("/price",function(req,res){
+    res.render("price",{currentPage:"price"});
+})
+
+app.get("/search",function(req,res){
+    res.render("search",{currentPage:"pages"});
+})
+
+app.get("/service",function(req,res){
+    res.render("service",{currentPage:"service"});
+})
+
+app.get("/team",function(req,res){
+    res.render("team",{currentPage:"pages"});
+})
+
+app.get("/testimonial",function(req,res){
+    res.render("testimonial",{currentPage:"pages"});
+})
+
+app.get("/predict",function(req,res){
+    res.render("predict",{currentPage:"pages"});
+})
+
+app.post("/predict", async (req, res) => {
+  const formData = {}; // Create an object to store form data
+
+  // Create a Busboy instance
+  const bb = busboy({ headers: req.headers });
+
+  // Initialize variables to store the uploaded file data
+  let imageBuffer = null;
+
+  // Handle fields (such as non-file data) in the form
+  bb.on("field", (fieldname, val) => {
+    formData[fieldname] = val;
+  });
+
+  // Handle files in the form
+  bb.on("file", (fieldname, file, filename, encoding, mimetype) => {
+    if (fieldname === "image") {
+      file.on("data", (data) => {
+        if (!imageBuffer) {
+          imageBuffer = [];
+        }
+        imageBuffer.push(data);
+      });
+
+      file.on("end", async () => {
+        if (imageBuffer) {
+          // Convert the buffer to an image tensor
+          const image = tf.node.decodeImage(Buffer.concat(imageBuffer));
+
+          // Preprocess the input image to match the expected shape (e.g., 4-dimensional [1, 256, 256, 3])
+          const inputImage = image.resizeBilinear([256, 256]).expandDims(0);
+
+          // Convert the input image to float32
+          const floatImage = inputImage.toFloat();
+
+          // Perform AI model inference (replace this with your AI model logic)
+          const predictions = await model.predict(floatImage).data();
+          let max = predictions[0];
+          let result = 0;
+          for (let i = 0; i < 6; i++) {
+            if (predictions[i] > max) {
+              max = predictions[i];
+              result = i;
+            }
+          }
+
+          // Include the name and prediction in the response
+          const name = formData.Name; // Access the name from form data
+          const prediction = disease[result];
+
+          try {
+            // Send a transaction to store data in the blockchain
+            await contract.methods.storePrediction(name, prediction).send({
+              from: "0xB0f95a0538bc96437D28a983c0d8B236FA973509", // Replace with your Ethereum sender address
+              gas: 3000000, // Set an appropriate gas limit
+            });
+
+            console.log("Data stored on the blockchain.");
+            res.render("report", {
+              Name: name,
+              Prediction: prediction,
+            });
+          } catch (error) {
+            console.error("Error storing data on the blockchain:", error);
+            res.status(500).send("Error storing data on the blockchain");
+          }
+        } else {
+          res.status(400).send("No image file uploaded.");
+        }
+      });
+    }
+  });
+
+  req.pipe(bb);
+});
+
+
+app.get("/report", async (req, res) => {
+  const nameToSearch = req.query.Name; // Assuming the name is passed as a query parameter
+
+  try {
+    const result = await contract.methods.getPrediction(nameToSearch).call();
+
+    if (result) {
+      const [storedName, storedPrediction] = result;
+      res.render("report", {
+        Name: storedName,
+        Prediction: storedPrediction,
+      });
+    } else {
+      res.status(404).send("Data not found.");
+    }
+  } catch (error) {
+    console.error("Error retrieving data from the blockchain:", error);
+    res.status(500).send("Error retrieving data from the blockchain");
+  }
+});
+
+
+app.listen(PORT, () => {
+  console.log(`Server started on port ${PORT}`);
+});
+
+
+
+// app.post("/predict", async (req, res) => {
+//   const formData = {}; // Create an object to store form data
+
+//   // Create a Busboy instance
+//   const bb = busboy({ headers: req.headers });
+
+//   // Initialize variables to store the uploaded file data
+//   let imageBuffer = null;
+
+//   // Handle fields (such as non-file data) in the form
+//   bb.on("field", (fieldname, val) => {
+//     formData[fieldname] = val;
+//   });
+
+//   // Handle files in the form
+//   bb.on("file", (fieldname, file, filename, encoding, mimetype) => {
+//     if (fieldname === "image") {
+//       file.on("data", (data) => {
+//         if (!imageBuffer) {
+//           imageBuffer = [];
+//         }
+//         imageBuffer.push(data);
+//       });
+
+//       file.on("end", async () => {
+//         if (imageBuffer) {
+//           // Convert the buffer to an image tensor
+//           const image = tf.node.decodeImage(Buffer.concat(imageBuffer));
+
+//           // Preprocess the input image to match the expected shape (e.g., 4-dimensional [1, 256, 256, 3])
+//           const inputImage = image.resizeBilinear([256, 256]).expandDims(0);
+
+//           // Convert the input image to float32
+//           const floatImage = inputImage.toFloat();
+
+//           // Perform AI model inference (replace this with your AI model logic)
+//           const predictions = await model.predict(floatImage).data();
+//           let max = predictions[0];
+//           let result = 0;
+//           for (let i = 0; i < 6; i++) {
+//             if (predictions[i] > max) {
+//               max = predictions[i];
+//               result = i;
+//             }
+//           }
+
+//           // Include the name and prediction in the response
+//           const name = formData.Name; // Access the name from form data
+//           const prediction = disease[result];
+
+//           // Now, store the data in the blockchain
+//           try {
+//             // Ethereum account and contract details
+//             const senderAddress = "0xB0f95a0538bc96437D28a983c0d8B236FA973509"; // Replace with your Ethereum sender address
+//             const senderPassword = ""; // Replace with your sender's password
+//             const gasLimit = 3000000; // Set an appropriate gas limit
+            
+//               if (senderPassword) {
+//                 await web3.eth.personal.unlockAccount(senderAddress, senderPassword);
+//               }
+
+//               // Send a transaction to store data in the blockchain
+//               await contactList.methods.createContact(name, prediction).send({ from: senderAddress, gas: gasLimit });
+
+//               // Lock the sender account after the transaction (if unlocked)
+//               if (senderPassword) {
+//                 await web3.eth.personal.lockAccount(senderAddress);
+//               }
+
+//               console.log("Data stored on the blockchain.");
+//               res.render("report", {
+//                 Name: name,
+//                 Prediction: prediction,
+//               });
+            
+//           } catch (error) {
+//             console.error("Error storing data on the blockchain:", error);
+//             res.status(500).send("Error storing data on the blockchain");
+//           }
+//         } else {
+//           res.status(400).send("No image file uploaded.");
+//         }
+//       });
+//     }
+//   });
+
+//   req.pipe(bb);
+// });
+// "0xB0f95a0538bc96437D28a983c0d8B236FA973509"

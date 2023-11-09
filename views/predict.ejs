@@ -1,0 +1,48 @@
+<%- include("./partials/header.ejs") %>
+
+
+    <!-- Appointment Start -->
+    <div class="container-fluid py-5">
+        <div class="container">
+            <div class="row gx-5">
+                <div class="col-lg-6">
+                    <div class="bg-light text-center rounded p-5">
+                        <h1 class="mb-4">Book An Appointment</h1>
+                        <form action="/predict" method="post" enctype="multipart/form-data">
+                            <div class="row g-3">
+                                <div class="col-12 col-sm-6">
+                                    <input type="text" class="form-control bg-white border-0" placeholder="Your Name" style="height: 55px;" name="Name">
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <input type="email" class="form-control bg-white border-0" placeholder="Your Email" style="height: 55px;">
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <input type="file" class="form-control bg-white border-0" placeholder="Upload Image" style="height: 55px;" name="image" accept="image/*">
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <div class="date" id="date" data-target-input="nearest">
+                                        <input type="text"
+                                            class="form-control bg-white border-0 datetimepicker-input"
+                                            placeholder="Date" data-target="#date" data-toggle="datetimepicker" style="height: 55px;">
+                                    </div>
+                                </div>
+                                <div class="col-12 col-sm-6">
+                                    <div class="time" id="time" data-target-input="nearest">
+                                        <input type="text"
+                                            class="form-control bg-white border-0 datetimepicker-input"
+                                            placeholder="Time" data-target="#time" data-toggle="datetimepicker" style="height: 55px;">
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <input class="btn btn-primary w-100 py-3" type="submit" value="Predict">
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+<%- include("./partials/footer.ejs") %>
